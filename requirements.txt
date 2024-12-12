@@ -2,3 +2,5 @@ streamLit
 Langchain
 Langchain_groq
 Langchain_community
+PyPDF2
+docx
