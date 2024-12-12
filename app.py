@@ -13,90 +13,82 @@ search = TavilySearchResults(max_results=2)
 parser = StrOutputParser()
 # tools = [search] # add tools to the list
 
+
+# File Parsing Functions
 def parse_pdf(file):
     reader = PdfReader(file)
     text = ""
-    for page in reader.pages:
-        text += page.extract_text()
-    return text
+    return "".join(page.extract_text() for page in reader.pages)
 
 def parse_docx(file):
     doc = Document(file)
-    text = ""
-    for paragraph in doc.paragraphs:
-        text += paragraph.text
-    return text
-
+    return "\n".join(paragraph.text for paragraph in doc.paragraphs)
+    
 def parse_uploaded_file(uploaded_file):
-    file_content = ""
     if uploaded_file.type == "application/pdf":
-        file_content = parse_pdf(uploaded_file)
+        return parse_pdf(uploaded_file)
     elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        file_content = parse_docx(uploaded_file)
-    return file_content
+        return parse_docx(uploaded_file)
+    return ""
+    
 
+# Initialize session state for insights
+if "company_insights" not in st.session_state:
+    st.session_state["company_insights"] = ""
+
+if "insights_generated" not in st.session_state:
+    st.session_state["insights_generated"] = False
 
 
 # Page Header
 st.title("Sales Assist Agent")
 st.markdown("Assistant Agent Powered by Groq.")
 
+
 # Data collection/inputs
 with st.form("company_info", clear_on_submit=True):
 
-    product_name = st.text_input("**Product Name** (What product are you selling?):",
-        value = "HempTech Bioplastics"
-        )
+    product_name = st.text_input("**Product Name** (What product are you selling?):",)
     
     company_url = st.text_input(
-        "**Company URL** (The URL of the company you are targeting):",
-        value="https://www.unilever.com/"
-    )
+        "**Company URL** (The URL of the company you are targeting):")
     
     product_category = st.text_input(
-        "**Product Category** (e.g., 'Data Warehousing' or 'Cloud Data Platform'):",
-        value="Sustainable Packaging"
-    )
+        "**Product Category** (e.g., 'Data Warehousing' or 'Cloud Data Platform'):")
     
-    competitors_url = st.text_input("**Competitors URL**",
-        value="https://www.ecopacksolutions.com, https://www.bioflexpackaging.com"
-)
+    competitors_url = st.text_input("**Competitors URL**")
     
     value_proposition = st.text_input(
-        "**Value Proposition** (A sentence summarizing the product’s value):",
-        value="Eco-friendly, biodegradable bioplastics for industrial use."
-    )
+        "**Value Proposition** (A sentence summarizing the product’s value):")
     
     target_customer = st.text_input(
-        "**Target Customer** (Name of the person you are trying to sell to.) :",
-        value="Richard Slater"
-    )
+        "**Target Customer** (Name of the person you are trying to sell to.) :")
     
     uploaded_file = st.file_uploader(
     "Upload Product Overview Document (PDF or DOCX):",
-    type=["pdf", "docx"]
-)
-
-
-    # For the llm insights result
-    company_insights = ""
-
-    # Data process
-    if st.form_submit_button("Generate Insights"):
-        if product_name and company_url:
-            with st.spinner("Processing..."):
-            # Use search tool to get Company Information
-                company_information = search.invoke(company_url)
-                
-                
+    type=["pdf", "docx"])
     
+    submitted = st.form_submit_button("Generate Insights")
 
-
-
-            # TODO: Create prompt <=================
+# Handle form submission
+if submitted:
+    required_fields = [product_name, company_url, product_category, value_proposition, target_customer]
+    if all(required_fields):
+        with st.spinner("Processing..."):
+                # Clear previous insights
+            st.session_state["company_insights"] = ""
+            st.session_state["insights_generated"] = False
+            
+            # Fetch company information if company_url is provided
+            company_information = search.invoke(company_url) if company_url else ""
+            
+            # Parse uploaded file if provided
+            file_content = parse_uploaded_file(uploaded_file) if uploaded_file else ""
+            
+        
+            # Create Prompt 
             prompt = f"""
-            You are a sales assistant agent for HempQuarterz, specializing in industrial hemp products.
-            Your task is to provide insights for selling HempTech Bioplastics, a biodegradable, eco-friendly packaging solution.    
+            You are a sales assistant agent, specializing in providing insights to sales representatives.   
             
             Analyze the following inputs:
             Company URL: {company_url}
@@ -105,46 +97,53 @@ with st.form("company_info", clear_on_submit=True):
             Competitors: {competitors_url}
             Value Proposition: {value_proposition}
             Target Customer: {target_customer}
-            
-            Instructions:
-            1. Summarize Unilever's strategy related to sustainability or bioplastics.
-            2. Identify any partnerships or mentions of competitors like EcoPack Solutions and BioFlex Packaging.
-            3. Provide key leadership insights, including relevant decision-makers and their roles.
-            4. Suggest how HempTech Bioplastics can be positioned as the ideal choice for Unilever's sustainability goals.
-
-            Output your response in the following format:
-            **Company Strategy**: [Provide a detailed summary]
-            **Competitor Mentions**: [Summarize any relevant information]
-            **Leadership Insights**: [List decision-makers and their relevance]
-            **Positioning Tips**: [Provide recommendations for pitching HempTech Bioplastics]
             """
-
-            # Prompt Template
-            prompt_template = ChatPromptTemplate([("system", prompt)])
-
-            # Chain
-            chain = prompt_template | llm | parser
-
-            # Result/Insights
-            company_insights = chain.invoke(
-                {
-                    "company_information": company_information,
-                    "product_name": product_name,
-                    "competitors_url": competitors_url,
-                    "product_category": product_category,
-                    "value_proposition": value_proposition,
-                    "target_customer": target_customer,
-                    "company_url": company_url
-                }
-            )
             
-
+            if file_content:
+                prompt += f"\nUploaded Document Content: {file_content}\n"
+            prompt += """
+            Instructions:
+            1. Summarize the target company's strategy relevant to the provided product category.
+            2. Identify any partnerships or mentions of the specified competitors and their relevance to the product.
+            3. Provide insights into key leadership or decision-makers at the target company who might influence purchasing decisions.
+            4. Suggest how the product can be positioned as an ideal choice to meet the target company’s needs and goals.
+            
+            Output your response in the following format:
+            **Company Strategy**: [Provide a detailed summary based on available information.]
+            **Competitor Mentions**: [Summarize any relevant information about competitors.]
+            **Leadership Insights**: [List decision-makers and their relevance.]
+            **Positioning Tips**: [Provide recommendations for positioning the product effectively.]
+            """
+        
+            try:
+                # Use LLM to generate insights
+                prompt_template = ChatPromptTemplate([("system", prompt)])
+                chain = prompt_template | llm | parser
+                insights = chain.invoke({
+                "company_url": company_url,
+                "product_name": product_name,
+                "competitors_url": competitors_url,
+                "product_category": product_category,
+                "value_proposition": value_proposition,
+                "target_customer": target_customer
+            })
+            
+            # Store new insights in session state
+                st.session_state["company_insights"] = insights
+                st.session_state["insights_generated"] = True
+            except Exception as e:
+                st.error(f"Failed to generate insights: {e}")
+            
+    else:
+        st.error("Please fill in all required fields.")
+    
+    
 # Display the insights
-if company_insights:
-    with st.container():
+if st.session_state["insights_generated"]:
         st.markdown("### Generated Insights")
         st.markdown(f"**Product Name:** {product_name}")
         st.markdown(f"**Target Company:** {company_url}")
         st.markdown(f"**Competitors:** {competitors_url}")    
-        st.write(company_insights)
-        
+        st.write(st.session_state["company_insights"])
+                
+
