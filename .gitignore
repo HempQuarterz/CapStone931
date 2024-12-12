@@ -10,3 +10,6 @@ __pycache__/
 
 # Ignore Streamlit cache
 .streamlit/
+
+# Ignore secret files
+secrets.toml

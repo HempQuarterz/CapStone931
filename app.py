@@ -3,6 +3,8 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.tools.tavily_search import TavilySearchResults
+from PyPDF2 import PdfReader
+from docx import Document
 
 
 # Model and Agent tools
@@ -10,6 +12,29 @@ llm = ChatGroq(api_key=st.secrets.get("GROQ_API_KEY"))
 search = TavilySearchResults(max_results=2)
 parser = StrOutputParser()
 # tools = [search] # add tools to the list
+
+def parse_pdf(file):
+    reader = PdfReader(file)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text()
+    return text
+
+def parse_docx(file):
+    doc = Document(file)
+    text = ""
+    for paragraph in doc.paragraphs:
+        text += paragraph.text
+    return text
+
+def parse_uploaded_file(uploaded_file):
+    file_content = ""
+    if uploaded_file.type == "application/pdf":
+        file_content = parse_pdf(uploaded_file)
+    elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        file_content = parse_docx(uploaded_file)
+    return file_content
+
 
 
 # Page Header
@@ -46,6 +71,12 @@ with st.form("company_info", clear_on_submit=True):
         "**Target Customer** (Name of the person you are trying to sell to.) :",
         value="Richard Slater"
     )
+    
+    uploaded_file = st.file_uploader(
+    "Upload Product Overview Document (PDF or DOCX):",
+    type=["pdf", "docx"]
+)
+
 
     # For the llm insights result
     company_insights = ""
@@ -56,6 +87,9 @@ with st.form("company_info", clear_on_submit=True):
             with st.spinner("Processing..."):
             # Use search tool to get Company Information
                 company_information = search.invoke(company_url)
+                
+                
+    
 
 
 
